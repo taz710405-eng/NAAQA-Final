@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 #endif
 
 // يحرك الكاميرا بالسحب ويقرب ويبعد (ماوس وعجلة، أو إصبع وقرصة بإصبعين)
+// لو الضغطة بدأت على شي وصار يتحرك مع الماوس (مثل الخيمة وقت التركيب) الكاميرا توقف
 public class CameraPanZoom : MonoBehaviour
 {
     public float minSize = 3f;
@@ -18,15 +19,22 @@ public class CameraPanZoom : MonoBehaviour
     List<Vector2> prev = new List<Vector2>();
     bool blocked;
 
+    Transform pressed;       // الشي اللي بدت عليه الضغطة
+    Vector3 pressedStartPos;
+    Vector2 pressStart;
+    bool deciding;           // ننتظر شوي نشوف هل الشي يتحرك مع الماوس
+
     void Start() { cam = GetComponent<Camera>(); startPos = transform.position; }
 
     void Update()
     {
         float scroll = ReadPointers();
-        if (pts.Count == 0) blocked = false;
-        else if (prev.Count == 0) blocked = OverUI();
+        if (pts.Count == 0) { blocked = false; deciding = false; }
+        else if (prev.Count == 0) StartPress();
 
-        if (!blocked && pts.Count == prev.Count)
+        if (!blocked && pts.Count == 1 && deciding) Decide();
+
+        if (!blocked && !deciding && pts.Count == prev.Count)
         {
             if (pts.Count == 1)
                 transform.position += cam.ScreenToWorldPoint(prev[0]) - cam.ScreenToWorldPoint(pts[0]);
@@ -42,6 +50,22 @@ public class CameraPanZoom : MonoBehaviour
         prev.Clear();
         prev.AddRange(pts);
         Clamp();
+    }
+
+    void StartPress()
+    {
+        blocked = OverUI();
+        pressStart = pts[0];
+        pressed = HitObject(pts[0]);
+        deciding = pressed != null;
+        if (deciding) pressedStartPos = pressed.position;
+    }
+
+    void Decide()
+    {
+        if (pressed == null) { deciding = false; return; }
+        if ((pressed.position - pressedStartPos).sqrMagnitude > 0.0001f) { blocked = true; deciding = false; return; }
+        if (Vector2.Distance(pts[0], pressStart) > 15f) deciding = false;
     }
 
     float ReadPointers()
@@ -75,6 +99,15 @@ public class CameraPanZoom : MonoBehaviour
         if (Input.touchCount > 0) return EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
 #endif
         return EventSystem.current.IsPointerOverGameObject();
+    }
+
+    Transform HitObject(Vector2 screenPos)
+    {
+        Ray ray = cam.ScreenPointToRay(screenPos);
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit)) return hit.transform;
+        RaycastHit2D hit2 = Physics2D.GetRayIntersection(ray);
+        return hit2.collider != null ? hit2.transform : null;
     }
 
     void Zoom(float f)
