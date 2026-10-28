@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
-
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -12,6 +11,9 @@ public class CamelAnimSwitch : MonoBehaviour
     public float eatIconTime = 1.5f;
     public bool happyAfterEat = true;   // بعد الأكل ينط فرحان
     public float happyDelay = 1.2f;     // كم ثانية بعد بداية الأكل
+    public bool sitAfterHappy = true;   // بعد الفرح يجلس يرتاح
+    public float sitDelay = 2.5f;       // كم ثانية بعد بداية الأكل يجلس
+    public float sitTime = 5f;          // كم ثانية يظل جالس
 
     Animator anim; Vector3 lastPos; float stillTime; float baseScaleX;
 
@@ -56,6 +58,32 @@ public class CamelAnimSwitch : MonoBehaviour
             CancelInvoke(nameof(PlayHappy));
             Invoke(nameof(PlayHappy), happyDelay);
         }
+        if (sitAfterHappy)
+        {
+            CancelInvoke(nameof(PlaySit));
+            Invoke(nameof(PlaySit), sitDelay);
+        }
+    }
+
+    // يجلس، ويوقف سكربت المشي (CamelMovement) مؤقتاً عشان ما ينزلق وهو جالس
+    public void PlaySit()
+    {
+        if (anim != null) anim.CrossFade("Camel_Sit", 0.2f, 0, 0f);
+        SetMovement(false);
+        CancelInvoke(nameof(StandUp));
+        Invoke(nameof(StandUp), sitTime);
+    }
+
+    public void StandUp()
+    {
+        if (anim != null) anim.CrossFade("Camel_Idle", 0.5f, 0);
+        SetMovement(true);
+    }
+
+    void SetMovement(bool on)
+    {
+        Behaviour mv = GetComponent("CamelMovement") as Behaviour;
+        if (mv != null) mv.enabled = on;
     }
 
     // تقدر البنات تناديها من سكربتاتهم: GetComponent<CamelAnimSwitch>().PlayHappy();
@@ -84,6 +112,7 @@ public class CamelAnimSwitch : MonoBehaviour
 #endif
         return false;
     }
+
     // لو الضغطة على زر أو واجهة (مثل زر ابدأ) لا نحسبها ضغطة على الجمل
     bool OverUI()
     {
@@ -92,7 +121,6 @@ public class CamelAnimSwitch : MonoBehaviour
 
     bool ClickedOnMe(Vector2 screenPos)
     {
-
         Camera cam = Camera.main;
         if (cam == null) return false;
         Ray ray = cam.ScreenPointToRay(screenPos);
