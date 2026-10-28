@@ -3477,7 +3477,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &378742446
 Transform:
   m_ObjectHideFlags: 0
@@ -8749,6 +8749,9 @@ MonoBehaviour:
   eatIconTime: 10
   happyAfterEat: 1
   happyDelay: 1.2
+  sitAfterHappy: 1
+  sitDelay: 2.5
+  sitTime: 5
 --- !u!95 &884925940
 Animator:
   serializedVersion: 7
@@ -22806,6 +22809,9 @@ MonoBehaviour:
   eatIconTime: 10
   happyAfterEat: 1
   happyDelay: 1.2
+  sitAfterHappy: 1
+  sitDelay: 2.5
+  sitTime: 5
 --- !u!114 &2064408815
 MonoBehaviour:
   m_ObjectHideFlags: 0
