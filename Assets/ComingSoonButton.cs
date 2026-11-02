@@ -15,6 +15,9 @@ public class ComingSoonButton : MonoBehaviour
 
     void Show()
     {
+        // الميزة صارت جاهزة (مثل شراء العلف)، فما نطلع «قريبًا»
+        if (GetComponent<FeedShopButton>() != null) return;
+
         if (NotificationManager.Instance == null)
         {
             Debug.Log(message);

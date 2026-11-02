@@ -9,17 +9,35 @@ public class GameManager : MonoBehaviour
     public int money = 0;
     public int feedCount = 5;
 
+    // القيم اللي تبدأ فيها اللعبة (عشان نرجع لها بعد تسجيل الخروج)
+    private int startMilk, startMoney, startFeed;
+
     void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
-            DontDestroyOnLoad(gameObject);
+            startMilk = milkCount;
+            startMoney = money;
+            startFeed = feedCount;
+            // سماعة وحدة بس في المشهد (الكاميرا فيها سماعة، فنطفي اللي هنا)
+            AudioListener al = GetComponent<AudioListener>();
+            if (al != null && Camera.main != null && Camera.main.GetComponent<AudioListener>() != null) al.enabled = false;
+            // ما نخليه يبقى بين المشاهد: نفس الكائن فيه مدير التركيب والشنطة والحساب،
+            // ولو بقى القديم، الجديد ينمسح ويضيع كل شي متركب في الحوش بعد تسجيل الخروج والدخول
+            // (الحفظ يرجّع القيم بعد تحميل المشهد)
         }
         else
         {
             Destroy(gameObject);
         }
+    }
+
+    public void ResetResources()
+    {
+        milkCount = startMilk;
+        money = startMoney;
+        feedCount = startFeed;
     }
 
     public void AddMilk(int amount)

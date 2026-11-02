@@ -26,6 +26,7 @@ public class TaskManager : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        rewards = new int[] { 5, 5, 5, 5, 5 };   // الشرح يعطي قليل (اللاعب يجمع بنفسه)
     }
 
     public void CompleteTask(int index)
@@ -34,14 +35,7 @@ public class TaskManager : MonoBehaviour
         if (done[index]) return;
 
         done[index] = true;
-
-        if (index < checks.Length && checks[index] != null)
-        {
-            checks[index].gameObject.SetActive(true);
-            checks[index].enabled = true;
-            if (doneSprite != null) checks[index].sprite = doneSprite;
-            checks[index].color = doneColor;
-        }
+        ShowCheck(index);
 
         int reward = index < rewards.Length ? rewards[index] : 0;
 
@@ -54,6 +48,41 @@ public class TaskManager : MonoBehaviour
         if (TaskBanner.Instance != null)
             TaskBanner.Instance.OnTaskCompleted(index, reward);
 
+        LevelManager.AddXp(LevelManager.XpPerTask);
+
         Debug.Log("مهمة " + (index + 1) + " خلصت! +" + reward + " قرش");
+    }
+
+    void ShowCheck(int index)
+    {
+        if (index >= checks.Length || checks[index] == null) return;
+        checks[index].gameObject.SetActive(true);
+        checks[index].enabled = true;
+        if (doneSprite != null) checks[index].sprite = doneSprite;
+        checks[index].color = doneColor;
+    }
+
+    // ===== الحفظ =====
+    public bool[] GetDone()
+    {
+        return (bool[])done.Clone();
+    }
+
+    // يرجّع المهام المخلصة بدون مكافأة وبدون احتفال
+    public void RestoreDone(bool[] saved)
+    {
+        if (saved == null) return;
+
+        for (int i = 0; i < done.Length && i < saved.Length; i++)
+        {
+            if (saved[i] && !done[i])
+            {
+                done[i] = true;
+                ShowCheck(i);
+            }
+        }
+
+        if (TaskBanner.Instance != null)
+            TaskBanner.Instance.RestoreDone(done);
     }
 }

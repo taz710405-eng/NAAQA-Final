@@ -46,6 +46,9 @@ public class AccountManager : MonoBehaviour
     public string UserId { get; private set; }
     public string UserEmail { get; private set; }
     public string DisplayName { get; private set; }
+    public string RefreshToken { get; private set; }
+    public string AvatarId { get; private set; }  // رقم الصورة الرمزية (avatar_0 ...)
+    public long ExpiresAt { get; private set; }   // وقت انتهاء الدخول (Unix)
 
     public static System.Action OnLoggedIn;
     public static System.Action OnLoggedOut;
@@ -57,6 +60,8 @@ public class AccountManager : MonoBehaviour
 
     void Awake()
     {
+        // نفس GameManager: يبقى واحد بس بين المشاهد (النسخة الجديدة تنحذف مع GameManager المكرر)
+        if (Instance != null && Instance != this) return;
         Instance = this;
         LoadSession();
     }
@@ -114,9 +119,41 @@ public class AccountManager : MonoBehaviour
             case Mode.Profile:
                 SetButton(mainButton, "تمام");
                 SetButton(switchButton, "تسجيل خروج");
-                Info("هلا " + DisplayName + "!\n" + UserEmail);
+                Info(ProfileText());
                 break;
         }
+    }
+
+    // ===== ملف اللاعب =====
+    string ProfileText()
+    {
+        string t = "هلا " + DisplayName + "!\n" + UserEmail;
+
+        GameManager gm = GameManager.Instance;
+        if (gm != null)
+        {
+            t += "\n\nالقروش: " + Ar(gm.money) + "   الحليب: " + Ar(gm.milkCount) + "   العلف: " + Ar(gm.feedCount);
+        }
+
+        OrderManager om = FindAnyObjectByType<OrderManager>();
+        if (om != null)
+        {
+            int camels = 0;
+            foreach (Camel c in FindObjectsByType<Camel>(FindObjectsInactive.Exclude)) camels++;
+            t += "\nالإبل: " + Ar(camels) + "   الطلبات المسلّمة: " + Ar(om.OrdersCompleted);
+        }
+
+        t += "\nتقدمك محفوظ في حسابك";
+        return t;
+    }
+
+    static string Ar(int number)
+    {
+        char[] chars = number.ToString().ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+            if (chars[i] >= '0' && chars[i] <= '9')
+                chars[i] = (char)('\u0660' + (chars[i] - '0'));
+        return new string(chars);
     }
 
     void OnMain()
@@ -167,7 +204,7 @@ public class AccountManager : MonoBehaviour
     }
 
     // ===== التحقق =====
-    string ValidateName(string name)
+    public string ValidateName(string name)
     {
         if (name == "") return "اكتب اسمك";
         if (name.Length < 2) return "الاسم قصير، لازم حرفين على الأقل";
@@ -176,14 +213,14 @@ public class AccountManager : MonoBehaviour
         return null;
     }
 
-    string ValidateEmail(string email)
+    public string ValidateEmail(string email)
     {
         if (email == "") return "اكتب إيميلك";
         if (!Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")) return "الإيميل غلط، مثال: name@gmail.com";
         return null;
     }
 
-    string ValidatePassword(string pass)
+    public string ValidatePassword(string pass)
     {
         if (pass == "") return "اكتب كلمة السر";
         if (pass.Length < 8) return "كلمة السر لازم ٨ أحرف على الأقل";
@@ -220,6 +257,7 @@ public class AccountManager : MonoBehaviour
             Error(ErrorToArabic(req.downloadHandler.text));
             yield break;
         }
+        if (AlreadyRegistered(req.downloadHandler.text)) { Error(AlreadyMsg); yield break; }
 
         DisplayName = name;
         UserEmail = email;
@@ -309,7 +347,16 @@ public class AccountManager : MonoBehaviour
 
     void Logout()
     {
+        ClearSession();
+        SetMode(Mode.Login);
+        Ok("تم تسجيل الخروج");
+    }
+
+    void ClearSession()
+    {
         AccessToken = null;
+        RefreshToken = null;
+        ExpiresAt = 0;
         UserId = null;
         UserEmail = null;
         DisplayName = null;
@@ -319,11 +366,219 @@ public class AccountManager : MonoBehaviour
         PlayerPrefs.DeleteKey("naaqa_uid");
         PlayerPrefs.DeleteKey("naaqa_email");
         PlayerPrefs.DeleteKey("naaqa_name");
+        PlayerPrefs.DeleteKey("naaqa_expires");
+        PlayerPrefs.DeleteKey("naaqa_avatar");
+        AvatarId = null;
         PlayerPrefs.Save();
 
         if (OnLoggedOut != null) OnLoggedOut();
-        SetMode(Mode.Login);
-        Ok("تم تسجيل الخروج");
+    }
+
+    // ===== واجهة برمجية للشاشات الجديدة (تسجيل الدخول وملف اللاعب) =====
+    // كل دالة ترجع النتيجة في done: null = تم، غير كذا = رسالة الخطأ بالعربي
+    public bool Busy { get { return busy; } }
+
+    // Supabase لو الإيميل مسجل من قبل يرد «تم» بدون ما يرسل رمز (حماية)، بس يرجّع identities فاضية
+    const string AlreadyMsg = "هذا الإيميل مسجّل من قبل، سجّل دخول بكلمة السر حقتك";
+    static bool AlreadyRegistered(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return false;
+        string s = Regex.Replace(raw, @"\s", "");
+        return s.Contains("\"identities\":[]");
+    }
+
+    public IEnumerator ApiSignUp(string name, string email, string pass, System.Action<string> done)
+    {
+        name = (name ?? "").Trim(); email = (email ?? "").Trim();
+        string err = ValidateName(name);
+        if (err == null) err = ValidateEmail(email);
+        if (err == null) err = ValidatePassword(pass ?? "");
+        if (err != null) { done(err); yield break; }
+
+        SignUpBody body = new SignUpBody();
+        body.email = email;
+        body.password = pass;
+        body.data = new UserMeta { display_name = name, avatar = "0" };
+
+        busy = true;
+        UnityWebRequest req = Post("/auth/v1/signup", JsonUtility.ToJson(body), null);
+        yield return req.SendWebRequest();
+        busy = false;
+
+        if (req.result != UnityWebRequest.Result.Success) { done(ErrorToArabic(req.downloadHandler.text)); yield break; }
+        if (AlreadyRegistered(req.downloadHandler.text)) { done(AlreadyMsg); yield break; }
+
+        DisplayName = name;
+        UserEmail = email;
+        done(null);
+    }
+
+    public IEnumerator ApiVerify(string code, System.Action<string> done)
+    {
+        code = (code ?? "").Trim();
+        if (code == "") { done("اكتب الرمز اللي وصلك"); yield break; }
+        if (!Regex.IsMatch(code, @"^[0-9]{6,8}$")) { done("الرمز أرقام بس (٦ أرقام)"); yield break; }
+
+        VerifyBody body = new VerifyBody { type = "signup", email = UserEmail, token = code };
+        busy = true;
+        UnityWebRequest req = Post("/auth/v1/verify", JsonUtility.ToJson(body), null);
+        yield return req.SendWebRequest();
+
+        if (req.result != UnityWebRequest.Result.Success)
+        {
+            busy = false;
+            done(ErrorToArabic(req.downloadHandler.text));
+            yield break;
+        }
+
+        SessionResponse s = JsonUtility.FromJson<SessionResponse>(req.downloadHandler.text);
+        UseSession(s);
+        yield return CreatePlayerRow();
+        busy = false;
+        done(null);
+    }
+
+    public IEnumerator ApiResend(System.Action<string> done)
+    {
+        ResendBody body = new ResendBody { type = "signup", email = UserEmail };
+        busy = true;
+        UnityWebRequest req = Post("/auth/v1/resend", JsonUtility.ToJson(body), null);
+        yield return req.SendWebRequest();
+        busy = false;
+        done(req.result == UnityWebRequest.Result.Success ? null : ErrorToArabic(req.downloadHandler.text));
+    }
+
+    // done(خطأ، يحتاج تأكيد الإيميل؟)
+    public IEnumerator ApiLogin(string email, string pass, System.Action<string, bool> done)
+    {
+        email = (email ?? "").Trim();
+        string err = ValidateEmail(email);
+        if (err == null && string.IsNullOrEmpty(pass)) err = "اكتب كلمة السر";
+        if (err != null) { done(err, false); yield break; }
+
+        LoginBody body = new LoginBody { email = email, password = pass };
+        busy = true;
+        UnityWebRequest req = Post("/auth/v1/token?grant_type=password", JsonUtility.ToJson(body), null);
+        yield return req.SendWebRequest();
+        busy = false;
+
+        if (req.result != UnityWebRequest.Result.Success)
+        {
+            string raw = req.downloadHandler.text;
+            if (raw.Contains("not confirmed") || raw.Contains("email_not_confirmed"))
+            {
+                UserEmail = email;
+                done("لازم تأكد إيميلك أول. أرسلنا لك رمز جديد", true);
+                yield break;
+            }
+            done(ErrorToArabic(raw), false);
+            yield break;
+        }
+
+        SessionResponse s = JsonUtility.FromJson<SessionResponse>(req.downloadHandler.text);
+        UseSession(s);
+        done(null, false);
+    }
+
+    // يغيّر الاسم والصورة في الحساب وفي جدول اللاعبين
+    public IEnumerator ApiUpdateProfile(string name, string avatar, System.Action<string> done)
+    {
+        name = (name ?? "").Trim();
+        string err = ValidateName(name);
+        if (err != null) { done(err); yield break; }
+        if (!IsLoggedIn) { done("سجّل دخول أول"); yield break; }
+
+        busy = true;
+        yield return EnsureFreshToken();
+        if (!LastRefreshOk) { busy = false; done("انتهى الدخول، سجّل دخول من جديد"); yield break; }
+
+        UpdateUserBody body = new UpdateUserBody { data = new UserMeta { display_name = name, avatar = avatar } };
+        UnityWebRequest req = NewRequest("PUT", "/auth/v1/user", JsonUtility.ToJson(body));
+        yield return req.SendWebRequest();
+
+        if (req.result != UnityWebRequest.Result.Success)
+        {
+            busy = false;
+            done(ErrorToArabic(req.downloadHandler.text));
+            yield break;
+        }
+
+        DisplayName = name;
+        AvatarId = avatar;
+        PlayerPrefs.SetString("naaqa_name", DisplayName);
+        PlayerPrefs.SetString("naaqa_avatar", AvatarId ?? "");
+        PlayerPrefs.Save();
+
+        yield return CreatePlayerRow();   // يحدّث الاسم في جدول players
+        busy = false;
+        done(null);
+    }
+
+    public void LogoutNow()
+    {
+        ClearSession();
+    }
+
+    // ===== تجديد الدخول (الرمز ينتهي كل ساعة) =====
+    // يرجع true لو الدخول صالح بعدها
+    public bool LastRefreshOk { get; private set; }
+
+    public IEnumerator EnsureFreshToken(bool force = false)
+    {
+        LastRefreshOk = IsLoggedIn;
+        if (!IsLoggedIn) yield break;
+        if (!force && NowUnix() < ExpiresAt - 60) yield break;
+
+        if (string.IsNullOrEmpty(RefreshToken))
+        {
+            LastRefreshOk = false;
+            yield break;
+        }
+
+        RefreshBody body = new RefreshBody { refresh_token = RefreshToken };
+        UnityWebRequest req = Post("/auth/v1/token?grant_type=refresh_token", JsonUtility.ToJson(body), null);
+        yield return req.SendWebRequest();
+
+        if (req.result == UnityWebRequest.Result.Success)
+        {
+            SessionResponse s = JsonUtility.FromJson<SessionResponse>(req.downloadHandler.text);
+            if (s != null && !string.IsNullOrEmpty(s.access_token))
+            {
+                // نجدد بدون ما نطلق OnLoggedIn مرة ثانية
+                System.Action saved = OnLoggedIn;
+                OnLoggedIn = null;
+                UseSession(s);
+                OnLoggedIn = saved;
+                LastRefreshOk = true;
+                yield break;
+            }
+        }
+
+        // 400/401 = الدخول انتهى فعلًا. غير كذا غالبًا ما فيه نت، نخليه
+        if (req.responseCode == 400 || req.responseCode == 401)
+        {
+            Debug.LogWarning("انتهى الدخول، لازم يسجل دخول من جديد: " + req.downloadHandler.text);
+            ClearSession();
+        }
+        LastRefreshOk = false;
+    }
+
+    // طلب لقاعدة البيانات بدخول اللاعب (يستخدمه SaveManager)
+    public UnityWebRequest NewRequest(string method, string path, string json)
+    {
+        UnityWebRequest req = new UnityWebRequest(supabaseUrl + path, method);
+        if (json != null) req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+        req.downloadHandler = new DownloadHandlerBuffer();
+        req.SetRequestHeader("Content-Type", "application/json");
+        req.SetRequestHeader("apikey", supabaseKey);
+        if (!string.IsNullOrEmpty(AccessToken))
+            req.SetRequestHeader("Authorization", "Bearer " + AccessToken);
+        return req;
+    }
+
+    static long NowUnix()
+    {
+        return System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     }
 
     IEnumerator CreatePlayerRow()
@@ -342,16 +597,22 @@ public class AccountManager : MonoBehaviour
         if (s == null || s.user == null) return;
 
         AccessToken = s.access_token;
+        RefreshToken = s.refresh_token;
+        ExpiresAt = s.expires_at > 0 ? s.expires_at : NowUnix() + (s.expires_in > 0 ? s.expires_in : 3600);
         UserId = s.user.id;
         UserEmail = s.user.email;
         if (s.user.user_metadata != null && !string.IsNullOrEmpty(s.user.user_metadata.display_name))
             DisplayName = s.user.user_metadata.display_name;
+        if (s.user.user_metadata != null && !string.IsNullOrEmpty(s.user.user_metadata.avatar))
+            AvatarId = s.user.user_metadata.avatar;
+        PlayerPrefs.SetString("naaqa_avatar", AvatarId ?? "");
 
         PlayerPrefs.SetString("naaqa_token", AccessToken);
         PlayerPrefs.SetString("naaqa_refresh", s.refresh_token);
         PlayerPrefs.SetString("naaqa_uid", UserId);
         PlayerPrefs.SetString("naaqa_email", UserEmail);
         PlayerPrefs.SetString("naaqa_name", DisplayName ?? "");
+        PlayerPrefs.SetString("naaqa_expires", ExpiresAt.ToString());
         PlayerPrefs.Save();
 
         if (OnLoggedIn != null) OnLoggedIn();
@@ -363,6 +624,10 @@ public class AccountManager : MonoBehaviour
         UserId = PlayerPrefs.GetString("naaqa_uid", "");
         UserEmail = PlayerPrefs.GetString("naaqa_email", "");
         DisplayName = PlayerPrefs.GetString("naaqa_name", "");
+        RefreshToken = PlayerPrefs.GetString("naaqa_refresh", "");
+        AvatarId = PlayerPrefs.GetString("naaqa_avatar", "");
+        long exp;
+        ExpiresAt = long.TryParse(PlayerPrefs.GetString("naaqa_expires", "0"), out exp) ? exp : 0;
         if (AccessToken == "") AccessToken = null;
     }
 
@@ -379,7 +644,7 @@ public class AccountManager : MonoBehaviour
         return req;
     }
 
-    string ErrorToArabic(string raw)
+    public string ErrorToArabic(string raw)
     {
         Debug.Log("Supabase: " + raw);
         if (string.IsNullOrEmpty(raw)) return "ما فيه اتصال بالإنترنت";
@@ -425,12 +690,14 @@ public class AccountManager : MonoBehaviour
         statusText.ForceMeshUpdate();
     }
 
-    [System.Serializable] class UserMeta { public string display_name; }
+    [System.Serializable] class UserMeta { public string display_name; public string avatar; }
     [System.Serializable] class SignUpBody { public string email; public string password; public UserMeta data; }
     [System.Serializable] class VerifyBody { public string type; public string email; public string token; }
     [System.Serializable] class ResendBody { public string type; public string email; }
     [System.Serializable] class LoginBody { public string email; public string password; }
     [System.Serializable] class UserInfo { public string id; public string email; public UserMeta user_metadata; }
-    [System.Serializable] class SessionResponse { public string access_token; public string refresh_token; public UserInfo user; }
+    [System.Serializable] class SessionResponse { public string access_token; public string refresh_token; public long expires_in; public long expires_at; public UserInfo user; }
+    [System.Serializable] class RefreshBody { public string refresh_token; }
+    [System.Serializable] class UpdateUserBody { public UserMeta data; }
     [System.Serializable] class PlayerRow { public string id; public string display_name; }
 }

@@ -52,6 +52,10 @@ public class TutorialSpotlight : MonoBehaviour
     public Vector2 handOffset = new Vector2(70f, -70f);
     public float handBounce = 15f;
 
+    // هدف خاص من شرح المويه (يغطي على الخطوة الحالية)
+    [System.NonSerialized] public Transform custom;
+    [System.NonSerialized] public bool customHide;
+
     private RectTransform root;
     private CanvasGroup group;
     private RectTransform hole, top, bottom, left, right, hand;
@@ -112,7 +116,14 @@ public class TutorialSpotlight : MonoBehaviour
         float targetRadius = 0f;
         bool show = false;
 
-        if (currentStep >= 0)
+        if (customHide)
+            show = false;
+        else if (custom != null)
+        {
+            show = custom.gameObject.activeInHierarchy && Measure(custom, out targetPos, out targetRadius);
+            targetRadius = Mathf.Max(targetRadius, minRadius);
+        }
+        else if (currentStep >= 0)
             show = FindTarget(out targetPos, out targetRadius);
 
         float goal = show ? 1f : 0f;

@@ -66,6 +66,21 @@ public class TaskBanner : MonoBehaviour
             StartCoroutine(Process());
     }
 
+    // من الحفظ: يعلّم المهام المخلصة ويعرض اللي بعدها، بدون احتفال
+    public void RestoreDone(bool[] saved)
+    {
+        if (saved == null || done == null) return;
+
+        bool changed = false;
+        for (int i = 0; i < done.Length && i < saved.Length; i++)
+        {
+            if (saved[i] && !done[i]) { done[i] = true; changed = true; }
+        }
+
+        if (changed && !busy && gameObject.activeInHierarchy)
+            ShowCurrent();
+    }
+
     IEnumerator Process()
     {
         busy = true;

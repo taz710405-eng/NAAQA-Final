@@ -11,6 +11,16 @@ public class Barn : MonoBehaviour
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             return;
 
+        if (PlacementManager.IsPlacing || EditMode.Active) return;
+
+        // بعد الشرح: نافذة تطوير الحوش الجديدة (من ١ لين ٥)
+        OrderManager om = FindAnyObjectByType<OrderManager>(FindObjectsInactive.Include);
+        if (om != null && om.IsUpgraded)
+        {
+            PenScreen.Show();
+            return;
+        }
+
         if (upgradeWindow == null)
         {
             Debug.LogError("Upgrade Window غير مربوط في Barn!", this);

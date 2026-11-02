@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1e140c">
+  <title>{{{ PRODUCT_NAME }}}</title>
+  <link rel="stylesheet" href="TemplateData/style.css">
+</head>
+<body>
+  <!-- قالب ناقة: اللعبة تملا الشاشة بأي جهاز، وعلى الجوال بالطول تطلع «قلّب جوالك» -->
+  <div id="game">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="loading">
+      <div class="logo">ناقة</div>
+      <div class="bar"><div id="fill"></div></div>
+      <div id="loading-text">جاري التحميل...</div>
+    </div>
+  </div>
+  <div id="rotate">
+    <div class="phone"></div>
+    <div class="msg">قلّب جوالك بالعرض عشان تلعب</div>
+  </div>
+  <div id="error"></div>
+  <script>
+    var canvas = document.getElementById("unity-canvas");
+    var fill = document.getElementById("fill");
+    var loading = document.getElementById("loading");
+    var loadingText = document.getElementById("loading-text");
+    var errorBox = document.getElementById("error");
+
+    function showError(msg, type) {
+      if (type !== "error") { console.warn(msg); return; }
+      errorBox.textContent = "صار خطأ في تحميل اللعبة. حدّث الصفحة وحاول مرة ثانية.";
+      errorBox.style.display = "block";
+      console.error(msg);
+    }
+
+    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+    if (isMobile) document.body.classList.add("mobile");
+
+    var buildUrl = "Build";
+    var loaderUrl = buildUrl + "/{{{ LOADER_FILENAME }}}";
+    var config = {
+      arguments: [],
+      dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+      frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+#if USE_THREADS
+      workerUrl: buildUrl + "/{{{ WORKER_FILENAME }}}",
+#endif
+#if USE_WASM
+      codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+#endif
+#if MEMORY_FILENAME
+      memoryUrl: buildUrl + "/{{{ MEMORY_FILENAME }}}",
+#endif
+#if SYMBOLS_FILENAME
+      symbolsUrl: buildUrl + "/{{{ SYMBOLS_FILENAME }}}",
+#endif
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+      productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+      productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+      showBanner: showError,
+      // الشاشات الحادة جدًا (جوالات) نحدها بـ ٢ عشان اللعبة ما تثقل
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2)
+    };
+
+    // الصفحة ما تتحرك ولا تتكبر باللمس (اللعبة هي اللي تستقبل اللمس)
+    document.addEventListener("touchmove", function (e) { if (e.touches.length > 1 || e.target === document.body) e.preventDefault(); }, { passive: false });
+    document.addEventListener("gesturestart", function (e) { e.preventDefault(); });
+
+    var script = document.createElement("script");
+    script.src = loaderUrl;
+    script.onload = function () {
+      createUnityInstance(canvas, config, function (progress) {
+        fill.style.width = Math.round(100 * progress) + "%";
+        loadingText.textContent = "جاري التحميل... " + Math.round(100 * progress) + "٪";
+      }).then(function () {
+        loading.style.display = "none";
+      }).catch(function (message) {
+        showError(message, "error");
+      });
+    };
+    script.onerror = function () { showError("loader failed", "error"); };
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>

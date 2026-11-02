@@ -7,6 +7,52 @@ public class ShopItemView : MonoBehaviour
     // الشنطة تسمع لهذا
     public static System.Action<string> OnItemBought;
 
+    // كل اللي انشرى (ينحفظ مع تقدم اللاعب)
+    private static readonly System.Collections.Generic.HashSet<string> boughtIds =
+        new System.Collections.Generic.HashSet<string>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics() { boughtIds.Clear(); }
+
+    public static System.Collections.Generic.List<string> GetBoughtIds()
+    {
+        return new System.Collections.Generic.List<string>(boughtIds);
+    }
+
+    public static void RestoreBoughtIds(System.Collections.Generic.IEnumerable<string> ids)
+    {
+        boughtIds.Clear();
+        if (ids != null)
+            foreach (string id in ids)
+                if (!string.IsNullOrEmpty(id)) boughtIds.Add(id);
+
+        foreach (ShopItemView v in FindObjectsByType<ShopItemView>(FindObjectsInactive.Include))
+        {
+            v.bought = boughtIds.Contains(v.itemId);
+            v.RefreshTexts();
+        }
+    }
+
+    public static bool IsBought(string id) { return boughtIds.Contains(id); }
+    public static void MarkBought(string id) { if (!string.IsNullOrEmpty(id)) boughtIds.Add(id); }
+
+    // شراء من أي مكان (متجر السوق الشعبي). يرجع رسالة الخطأ، أو null لو تم
+    public static string Purchase(string id, string name, int price, bool once)
+    {
+        GameManager gm = GameManager.Instance;
+        if (gm == null) return "صار خطأ";
+        if (once && boughtIds.Contains(id)) return "اشتريته من قبل!";
+        if (!gm.SpendMoney(price))
+            return gm.money == 0 ? "ما معك ولا قرش!" : "القروش ما تكفي! المطلوب " + NaaqaUI.Ar(price) + " قرش";
+
+        boughtIds.Add(id);
+        if (MoneyManager.Instance != null) MoneyManager.Instance.UpdateMoneyText();
+        foreach (ShopItemView v in FindObjectsByType<ShopItemView>(FindObjectsInactive.Include))
+            if (v.itemId == id) { v.bought = true; v.RefreshTexts(); }
+        if (OnItemBought != null) OnItemBought(id);
+        return null;
+    }
+
     [Header("بيانات المنتج")]
     public string itemId = "camel_pen";
     public string itemName = "عزبة الإبل";
@@ -35,11 +81,12 @@ public class ShopItemView : MonoBehaviour
 
     void OnEnable()
     {
+        if (boughtIds.Contains(itemId)) bought = true;
         RefreshTexts();
         if (comingSoon) MakeGray();
     }
 
-    void RefreshTexts()
+    public void RefreshTexts()
     {
         SetText(nameText, itemName);
         SetText(priceText, ToArabicNumbers(price) + " قرش");
@@ -83,6 +130,7 @@ public class ShopItemView : MonoBehaviour
         }
 
         bought = true;
+        boughtIds.Add(itemId);
 
         if (MoneyManager.Instance != null)
             MoneyManager.Instance.UpdateMoneyText();

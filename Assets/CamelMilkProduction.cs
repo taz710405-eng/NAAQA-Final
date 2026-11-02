@@ -24,7 +24,7 @@ public class CamelMilkProduction : MonoBehaviour
         {
             GameManager.Instance.AddMilk(milkAmount);
 
-            MilkManager milkManager = FindFirstObjectByType<MilkManager>();
+            MilkManager milkManager = FindAnyObjectByType<MilkManager>();
 
             if (milkManager != null)
             {

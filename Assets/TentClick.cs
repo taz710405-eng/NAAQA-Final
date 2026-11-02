@@ -8,15 +8,13 @@ public class TentClick : MonoBehaviour
     void OnMouseDown()
     {
         // وقت التركيب ما تنفتح
-        if (PlacementManager.IsPlacing) return;
+        if (PlacementManager.IsPlacing || EditMode.Active) return;
 
         // إذا فيه نافذة فوق الخيمة، الضغطة لها
         if (IsPointerOverUI()) return;
 
-        if (AccountManager.Instance != null)
-            AccountManager.Instance.Open();
-        else
-            Debug.LogError("AccountManager مو موجود!");
+        // الخيمة صارت ملف اللاعب
+        ProfileScreen.Show();
     }
 
     bool IsPointerOverUI()

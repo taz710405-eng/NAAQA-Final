@@ -73,6 +73,31 @@ public class InventoryManager : MonoBehaviour
         return new List<string>(counts.Keys);
     }
 
+    // ===== الحفظ =====
+    public Dictionary<string, int> GetAllCounts()
+    {
+        return new Dictionary<string, int>(counts);
+    }
+
+    public void SetAllCounts(Dictionary<string, int> saved)
+    {
+        counts.Clear();
+        if (saved != null)
+        {
+            foreach (KeyValuePair<string, int> kv in saved)
+            {
+                if (kv.Value <= 0) continue;
+                if (GetData(kv.Key) == null)
+                {
+                    Debug.LogWarning("غرض محفوظ مو موجود في Catalog: " + kv.Key);
+                    continue;
+                }
+                counts[kv.Key] = kv.Value;
+            }
+        }
+        if (OnChanged != null) OnChanged();
+    }
+
     public BagItemData GetData(string id)
     {
         foreach (BagItemData d in catalog)

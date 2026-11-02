@@ -34,6 +34,9 @@ public class OrderWindowView : MonoBehaviour
     private int lastHave = -1;
     private int lastNeed = -1;
     private int lastDone = -1;
+    private int lastReward = -1;
+    private int lastWait = -1;
+    private RTLTextMeshPro waitText;   // «طلب جديد يوصلك بعد...»
 
     void Awake()
     {
@@ -45,6 +48,7 @@ public class OrderWindowView : MonoBehaviour
         lastHave = -1;
         lastNeed = -1;
         lastDone = -1;
+        lastReward = -1;
         AutoRefresh();
     }
 
@@ -57,7 +61,8 @@ public class OrderWindowView : MonoBehaviour
     {
         if (!autoUpdate || GameManager.Instance == null) return;
 
-        bool delivered = orderManager != null && orderManager.OrderDelivered;
+        // بعد الشرح الطلبات تتجدد، فالنافذة ما تصير فاضية
+        bool delivered = orderManager != null && !orderManager.HasOpenOrder;
         int done = delivered ? 1 : 0;
 
         if (done != lastDone)
@@ -67,17 +72,57 @@ public class OrderWindowView : MonoBehaviour
             lastHave = -1;
         }
 
+        // ننتظر الطلب الجاي: عداد بدل «ما عندك طلبات»
+        UpdateWaitText(delivered && orderManager != null && orderManager.IsWaiting);
+
         if (delivered) return;
 
         int need = orderManager != null ? orderManager.requiredMilk : 2;
         int reward = orderManager != null ? orderManager.rewardCoins : 50;
         int have = GameManager.Instance.milkCount;
 
-        if (have == lastHave && need == lastNeed) return;
+        if (have == lastHave && need == lastNeed && reward == lastReward) return;
         lastHave = have;
         lastNeed = need;
+        lastReward = reward;
 
         Show(itemName, have, need, reward);
+    }
+
+    void UpdateWaitText(bool waiting)
+    {
+        if (!waiting)
+        {
+            if (waitText != null && waitText.gameObject.activeSelf) waitText.gameObject.SetActive(false);
+            lastWait = -1;
+            return;
+        }
+
+        if (waitText == null && emptyText != null)
+        {
+            // نسوي نص عربي بنفس مكان وحجم EmptyText
+            GameObject g = new GameObject("WaitText", typeof(RectTransform));
+            g.transform.SetParent(emptyText.transform.parent, false);
+            RectTransform src = (RectTransform)emptyText.transform, rt = (RectTransform)g.transform;
+            rt.anchorMin = src.anchorMin; rt.anchorMax = src.anchorMax; rt.pivot = src.pivot;
+            rt.anchoredPosition = src.anchoredPosition; rt.sizeDelta = src.sizeDelta;
+            waitText = g.AddComponent<RTLTextMeshPro>();
+            TMPro.TMP_Text old = emptyText.GetComponent<TMPro.TMP_Text>();
+            waitText.font = old != null ? old.font : NaaqaUI.Font;
+            waitText.fontSize = old != null ? old.fontSize : 34;
+            waitText.color = old != null ? old.color : Color.black;
+            waitText.alignment = TMPro.TextAlignmentOptions.Center;
+            waitText.raycastTarget = false;
+        }
+        if (waitText == null) return;
+
+        if (emptyText.activeSelf) emptyText.SetActive(false);
+        if (!waitText.gameObject.activeSelf) waitText.gameObject.SetActive(true);
+
+        int sec = Mathf.CeilToInt(orderManager.WaitLeft);
+        if (sec == lastWait) return;
+        lastWait = sec;
+        waitText.text = "طلب جديد يوصلك بعد " + ToArabicNumbers(sec) + " ثانية";
     }
 
     void SetDoneState(bool delivered)

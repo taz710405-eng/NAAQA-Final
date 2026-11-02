@@ -126,7 +126,19 @@ namespace RTLTMPro
                 return input;
 
             finalText.Clear();
-            RTLSupport.FixRTL(input, finalText, farsi, fixTags, preserveNumbers);
+            // ناقة: دايمًا عربي (ي عربية مو فارسية) والأرقام تنعرض بالترتيب الصحيح
+            char[] chars = input.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (chars[i] >= '٠' && chars[i] <= '٩') chars[i] = (char)('0' + (chars[i] - '٠'));
+                else if (chars[i] >= '۰' && chars[i] <= '۹') chars[i] = (char)('0' + (chars[i] - '۰'));
+                else if (chars[i] == 'ی') chars[i] = 'ي';
+            }
+            input = new string(chars);
+            // «العزبة» صار اسمها «الحوش» في كل اللعبة
+            input = input.Replace("العزبة", "الحوش").Replace("العزبه", "الحوش")
+                         .Replace("عزبتك", "حوشك").Replace("عزبة", "حوش");
+            RTLSupport.FixRTL(input, finalText, false, fixTags, false);
             finalText.Reverse();
             return finalText.ToString();
         }

@@ -39,7 +39,8 @@ public class LockUntilTutorial : MonoBehaviour
         if (IsTutorialDone())
         {
             Unlock();
-            if (NotificationManager.Instance != null)
+            // لو انفتح بسبب تحميل الحفظ، لا نطلع رسالة
+            if (NotificationManager.Instance != null && !SaveManager.JustRestored)
                 NotificationManager.Instance.Show(unlockedMessage);
         }
     }

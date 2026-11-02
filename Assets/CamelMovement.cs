@@ -49,7 +49,31 @@ public class CamelMovement : MonoBehaviour
         if (camel != null && camel.milkReadyIcon != null && camel.milkReadyIcon.activeSelf)
             return true;
 
+        // وقت الإنتاج قاعدة ترتاح
+        if (camel != null && camel.IsProducing)
+            return true;
+
         return false;
+    }
+
+    // PenVisual يحدد مكان كل ناقة داخل الحوش
+    // snap = تنتقل لمكانها على طول (ناقة جديدة)، وإلا تمشي له بهدوء
+    public void SetHome(Vector3 home, float range, bool snap = true)
+    {
+        home.y = transform.position.y;
+        startPosition = home;
+        moveRange = range;
+        if (snap)
+        {
+            transform.position = home;
+            waitTimer = Random.Range(0f, waitTime);
+            ChooseNewTarget();
+        }
+        else
+        {
+            targetPosition = home;
+            waitTimer = 0f;
+        }
     }
 
     void ChooseNewTarget()
